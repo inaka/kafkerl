@@ -19,29 +19,29 @@
 -type start_link_response() :: {ok, atom(), pid()} | ignore | {error, any()}.
 
 -record(fetch, {correlation_id     = 0 :: kafkerl_protocol:correlation_id(),
-                server_ref = undefined :: kafkerl:server_ref(),
-                topic      = undefined :: kafkerl:topic(),
-                partition  = undefined :: kafkerl:partition(),
-                options    = undefined :: kafkerl:options(),
+                server_ref             :: kafkerl:server_ref(),
+                topic                  :: kafkerl:topic(),
+                partition              :: kafkerl:partition(),
+                options                :: kafkerl:options(),
                 state           = void :: kafkerl_protocol:fetch_state()}).
 
--record(state, {name       = undefined :: atom(),
+-record(state, {name                   :: atom(),
                 buffers           = [] :: [atom()],
-                conn_idx   = undefined :: conn_idx(),
-                client_id  = undefined :: binary(),
-                socket     = undefined :: port(),
-                address    = undefined :: kafkerl_connector:address(),
-                connector  = undefined :: pid(),
-                tref       = undefined :: any(),
+                conn_idx               :: conn_idx(),
+                client_id              :: binary(),
+                socket                 :: port(),
+                address                :: kafkerl_connector:address(),
+                connector              :: pid(),
+                tref                   :: any(),
                 tcp_options       = [] :: [any()],
                 max_retries        = 0 :: integer(),
                 retry_interval     = 0 :: integer(),
                 request_number     = 0 :: integer(),
                 pending_requests  = [] :: [integer()],
                 max_time_queued    = 0 :: integer(),
-                ets        = undefined :: atom(),
+                ets                    :: atom(),
                 fetches           = [] :: [#fetch{}],
-                current_fetch   = void :: kafkerl_protocol:correlation_id() | 
+                current_fetch   = void :: kafkerl_protocol:correlation_id() |
                                           void,
                 scheduled_fetches = [] :: [{{kafkerl:topic(),
                                              kafkerl:partition()},
@@ -102,7 +102,7 @@ handle_info(connection_timeout, State) ->
   {stop, {error, unable_to_connect}, State};
 handle_info({tcp_closed, _Socket}, State = #state{name = Name,
                                                   address = {Host, Port}}) ->
-  _ = error_logger:warning_msg("~p lost connection to ~p:~p", [Name, Host, Port]),
+  error_logger:warning_msg("~p lost connection to ~p:~p", [Name, Host, Port]),
   NewState = handle_tcp_close(State),
   {noreply, NewState};
 handle_info({tcp, _Socket, Bin}, State) ->
@@ -114,7 +114,8 @@ handle_info({flush, Time}, State) ->
   {ok, _Tref} = queue_flush(Time),
   handle_flush(State);
 handle_info(Msg, State = #state{name = Name}) ->
-  _ = error_logger:info_msg("~p got unexpected info message: ~p on ~p", [Name, Msg]),
+  error_logger:info_msg(
+    "~p got unexpected info message: ~p on ~p", [Name, Msg]),
   {noreply, State}.
 
 % Boilerplate
@@ -138,8 +139,9 @@ init([Id, Connector, Address, Config, Name]) ->
     {ok, [TCPOpts, RetryInterval, MaxRetries, ClientId, MaxTimeQueued]} ->
       NewTCPOpts = kafkerl_utils:get_tcp_options(TCPOpts),
       EtsName = list_to_atom(atom_to_list(Name) ++ "_ets"),
-      ets:new(EtsName, [named_table, public, {write_concurrency, true},
-                        {read_concurrency, true}]),
+      EtsName =
+        ets:new(EtsName, [named_table, public, {write_concurrency, true},
+                          {read_concurrency, true}]),
       State = #state{conn_idx = Id, tcp_options = NewTCPOpts, address = Address,
                      max_retries = MaxRetries, retry_interval = RetryInterval,
                      connector = Connector, client_id = ClientId, name = Name,
@@ -150,7 +152,8 @@ init([Id, Connector, Address, Config, Name]) ->
       {ok, State};
     {errors, Errors} ->
       ok = lists:foreach(fun(E) ->
-                           _ = error_logger:error_msgcritical("configuration error: ~p", [E])
+                           error_logger:error_msg(
+                            "[CRITICAL] configuration error: ~p", [E])
                          end, Errors),
       {stop, bad_config}
   end.
@@ -175,10 +178,11 @@ handle_flush(State = #state{socket = Socket, ets = EtsName, buffers = Buffers,
       true = ets:insert_new(EtsName, {CorrelationId, MergedMessages}),
       case gen_tcp:send(Socket, Request) of
         {error, Reason} ->
-          _ = error_logger:error_msgcritical("~p was unable to write to socket, reason: ~p",
-                             [Name, Reason]),
+          error_logger:error_msg(
+            "[CRITICAL] ~p was unable to write to socket, reason: ~p",
+            [Name, Reason]),
           gen_tcp:close(Socket),
-          ets:delete_all_objects(EtsName, CorrelationId),
+          ets:delete_all_objects(EtsName),
           ok = resend_messages(MergedMessages, Connector),
           {noreply, handle_tcp_close(NewState)};
         ok ->
@@ -207,7 +211,7 @@ handle_fetch(ServerRef, Topic, Partition, Options,
       {reply, {error, fetch_in_progress}, State};
     % We have a valid fetch request!
     {not_found, KeyTakeResult, Scheduled} ->
-      {ok, CorrelationId, NewState} = build_correlation_id(State),  
+      {ok, CorrelationId, NewState} = build_correlation_id(State),
       Offset = proplists:get_value(offset, Options, 0),
       Request = {Topic, {Partition, Offset, 2147483647}},
       MaxWait = proplists:get_value(max_wait, Options),
@@ -219,8 +223,9 @@ handle_fetch(ServerRef, Topic, Partition, Options,
                                                      MinBytes),
       case gen_tcp:send(Socket, Payload) of
         {error, Reason} ->
-          _ = error_logger:error_msgcritical("~p was unable to write to socket, reason: ~p",
-                             [Name, Reason]),
+          error_logger:error_msg(
+            "[CRITICAL] ~p was unable to write to socket, reason: ~p",
+            [Name, Reason]),
           ok = gen_tcp:close(Socket),
           {reply, {error, no_connection}, handle_tcp_close(State)};
         ok ->
@@ -341,33 +346,28 @@ handle_fetch_response(Bin, Fetch,
 
 handle_produce_response(Bin, State = #state{connector = Connector, name = Name,
                                             ets = EtsName}) ->
-  case kafkerl_protocol:parse_produce_response(Bin) of
-    {ok, CorrelationId, Topics} ->
-      case ets:lookup(EtsName, CorrelationId) of
-        [{CorrelationId, Messages}] ->
-          ets:delete(EtsName, CorrelationId),
-          {Errors, Successes} = split_errors_and_successes(Topics),
-          % First, send the offsets and messages that were delivered
-          _ = spawn(fun() ->
-                      notify_success(Successes, Messages, Connector)
-                    end),
-          % Then handle the errors
-          case handle_errors(Errors, Messages, Name) of
-            ignore ->
-              {ok, State};
-            {request_metadata, MessagesToResend} ->
-              kafkerl_connector:request_metadata(Connector),
-              ok = resend_messages(MessagesToResend, Connector),
-              {ok, State}
-          end;
-        _ ->
-          _ = error_logger:warning_msg("~p was unable to get produce response", [Name]),
-          {error, invalid_produce_response}
+  {ok, CorrelationId, Topics} = kafkerl_protocol:parse_produce_response(Bin),
+  case ets:lookup(EtsName, CorrelationId) of
+    [{CorrelationId, Messages}] ->
+      ets:delete(EtsName, CorrelationId),
+      {Errors, Successes} = split_errors_and_successes(Topics),
+      % First, send the offsets and messages that were delivered
+      _ = spawn(fun() ->
+                  notify_success(Successes, Messages, Connector)
+                end),
+      % Then handle the errors
+      case handle_errors(Errors, Messages, Name) of
+        ignore ->
+          {ok, State};
+        {request_metadata, MessagesToResend} ->
+          kafkerl_connector:request_metadata(Connector),
+          ok = resend_messages(MessagesToResend, Connector),
+          {ok, State}
       end;
-    Other ->
-     _ = error_logger:error_msgcritical("~p got unexpected response when parsing message: ~p",
-                        [Name, Other]),
-     {ok, State}
+    _ ->
+      error_logger:warning_msg(
+        "~p was unable to get produce response", [Name]),
+      {error, invalid_produce_response}
   end.
 
 %%==============================================================================
@@ -385,7 +385,7 @@ notify_success([{Topic, Partition, Offset} | T], Messages, Pid) ->
   M = messages_in_partition(Partition, Partitions),
   kafkerl_connector:produce_succeeded(Pid, {Topic, Partition, M, Offset}),
   notify_success(T, Messages, Pid).
-  
+
 partitions_in_topic(Topic, Messages) ->
   lists:flatten([P || {T, P} <- Messages, T =:= Topic]).
 messages_in_partition(Partition, Messages) ->
@@ -435,21 +435,24 @@ handle_error({Topic, Partition, Error}, Messages, Name)
   end;
 handle_error({Topic, Partition, Error}, _Messages, Name) ->
   ErrorName = kafkerl_error:get_error_name(Error),
-  _ = error_logger:error_msg("~p was unable to handle ~p error on topic ~p, partition ~p",
-                  [Name, ErrorName, Topic, Partition]),
+  error_logger:error_msg(
+    "~p was unable to handle ~p error on topic ~p, partition ~p",
+    [Name, ErrorName, Topic, Partition]),
   false.
 
 get_message_for_error(Topic, Partition, SavedMessages, Name) ->
   case lists:keyfind(Topic, 1, SavedMessages) of
     false ->
-      _ = error_logger:error_msg("~p found no messages for topic ~p, partition ~p",
-                      [Name, Topic, Partition]),
+      error_logger:error_msg(
+        "~p found no messages for topic ~p, partition ~p",
+        [Name, Topic, Partition]),
       undefined;
     {Topic, Partitions} ->
       case lists:keyfind(Partition, 1, Partitions) of
-        false -> 
-          _ = error_logger:error_msg("~p found no messages for topic ~p, partition ~p",
-                          [Name, Topic, Partition]),
+        false ->
+          error_logger:error_msg(
+            "~p found no messages for topic ~p, partition ~p",
+            [Name, Topic, Partition]),
           undefined;
         {Partition, Messages} ->
           {Topic, Partition, Messages}
@@ -457,18 +460,19 @@ get_message_for_error(Topic, Partition, SavedMessages, Name) ->
   end.
 
 connect(Pid, Name, _TCPOpts, {Host, Port} = _Address, _Timeout, 0) ->
-  _ = error_logger:error_msg("~p was unable to connect to ~p:~p", [Name, Host, Port]),
+  error_logger:error_msg(
+    "~p was unable to connect to ~p:~p", [Name, Host, Port]),
   Pid ! connection_timeout;
 connect(Pid, Name, TCPOpts, {Host, Port} = Address, Timeout, Retries) ->
   case gen_tcp:connect(Host, Port, TCPOpts, 5000) of
     {ok, Socket} ->
-      gen_tcp:controlling_process(Socket, Pid),
+      ok = gen_tcp:controlling_process(Socket, Pid),
       Pid ! {connected, Socket};
     {error, Reason} ->
       NewRetries = Retries - 1,
-      _ = error_logger:warning_msg("~p unable to connect to ~p:~p. Reason: ~p
-                         (~p retries left)",
-                        [Name, Host, Port, Reason, NewRetries]),
+      error_logger:warning_msg(
+        "~p unable to connect to ~p:~p. Reason: ~p (~p retries left)",
+        [Name, Host, Port, Reason, NewRetries]),
       timer:sleep(Timeout),
       connect(Pid, Name, TCPOpts, Address, Timeout, NewRetries)
   end.
@@ -491,7 +495,7 @@ get_messages_from(Ets, Retries) ->
     _Error when Retries > 0 ->
       get_messages_from(Ets, Retries - 1);
     _Error ->
-      _ = error_logger:warning_msg("giving up on reading from the ETS buffer"),
+      error_logger:warning_msg("giving up on reading from the ETS buffer"),
       []
   end.
 

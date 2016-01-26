@@ -15,7 +15,8 @@
 send_error(Callback, Reason) ->
   send_event(Callback, {error, Reason}).
 
--spec send_event(kafkerl:callback(), any()) -> ok | {error, {bad_callback, any()}}.
+-spec send_event(kafkerl:callback(), any()) ->
+  ok | {error, {bad_callback, any()}}.
 send_event({M, F}, Data) ->
   spawn(fun() -> M:F(Data) end),
   ok;
@@ -41,14 +42,14 @@ get_tcp_options(Options) -> % TODO: refactor
 % This is rather costly, and for obvious reasons does not maintain the order of
 % the partitions or topics, but it does keep the order of the messages within a
 % specific topic-partition pair
--spec merge_messages([kafkerl_protocol:basic_message()]) ->
+-spec merge_messages([kafkerl:basic_message()]) ->
   kafkerl_protocol:merged_message().
 merge_messages(Topics) ->
   merge_topics(Topics).
 
 % Not as costly, but still avoid this in a place where performance is critical
 -spec split_messages(kafkerl_protocol:merged_message()) ->
-  [kafkerl_protocol:basic_message()].
+  [kafkerl:basic_message()].
 split_messages({Topic, {Partition, Messages}}) ->
   {Topic, Partition, Messages};
 split_messages({Topic, Partitions}) ->
@@ -68,8 +69,7 @@ valid_message(L) when is_list(L) ->
 valid_message(_Any) ->
   false.
 
--spec buffer_name(kafkerl_protocol:topic(), kafkerl_protocol:partition()) ->
-  atom().
+-spec buffer_name(kafkerl:topic(), kafkerl:partition()) -> atom().
 buffer_name(Topic, Partition) ->
   Bin = <<Topic/binary, $., (integer_to_binary(Partition))/binary, "_buffer">>,
   binary_to_atom(Bin, utf8).
@@ -123,6 +123,7 @@ merge_partitions([{Partition, Messages} | T], Acc) ->
       merge_partitions(T, [{Partition, NewMessages} | NewAcc])
   end.
 
+-spec merge_messages(binary()|[binary()], binary()|[binary()]) -> [binary()].
 merge_messages(A, B) ->
   case {is_list(A), is_list(B)} of
     {true, true}   -> B ++ A;

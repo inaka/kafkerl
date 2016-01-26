@@ -150,17 +150,10 @@ parse_fetch_response(Bin, {Remainder, CorrelationId, Steps}) ->
 parse_metadata_response(<<CorrelationId:?UINT,
                           BrokerCount:?UINT,
                           BrokersBin/binary>>) ->
-  case parse_brokers(BrokerCount, BrokersBin) of
-    {ok, Brokers, <<TopicCount:?UINT, TopicsBin/binary>>} ->
-      case parse_topic_metadata(TopicCount, TopicsBin) of
-        {ok, Metadata} ->
-          {ok, CorrelationId, {Brokers, Metadata}};
-        {error, _Reason} = Error ->
-          Error
-      end;
-    {error, _Reason} = Error ->
-      Error
-  end;
+  {ok, Brokers, <<TopicCount:?UINT, TopicsBin/binary>>} =
+    parse_brokers(BrokerCount, BrokersBin),
+  {ok, Metadata} = parse_topic_metadata(TopicCount, TopicsBin),
+  {ok, CorrelationId, {Brokers, Metadata}};
 parse_metadata_response(_Other) ->
   {error, unexpected_binary}.
 
@@ -408,7 +401,8 @@ parse_produced_topics(Count, Bin) ->
 parse_produced_topics(Count, <<>>, Acc) when Count =< 0 ->
   {ok, lists:reverse(Acc)};
 parse_produced_topics(Count, Bin, Acc) when Count =< 0 ->
-  error_logger:warning_msg("Finished parsing produce response, ignoring bytes: ~p", [Bin]),
+  error_logger:warning_msg(
+    "Finished parsing produce response, ignoring bytes: ~p", [Bin]),
   {ok, lists:reverse(Acc)};
 parse_produced_topics(Count, <<TopicNameLength:?USHORT,
                                TopicName:TopicNameLength/binary,
@@ -438,7 +432,8 @@ parse_topics(Count, Bin) ->
 parse_topics(Count, <<>>, Acc) when Count =< 0 ->
   {ok, lists:reverse(Acc)};
 parse_topics(Count, Bin, Acc) when Count =< 0 ->
-  error_logger:warning_msg("Finished parsing topics, ignoring bytes: ~p", [Bin]),
+  error_logger:warning_msg(
+    "Finished parsing topics, ignoring bytes: ~p", [Bin]),
   {ok, lists:reverse(Acc)};
 parse_topics(Count, Bin, Acc) ->
   case parse_topic(Bin) of
@@ -564,7 +559,8 @@ parse_topic_metadata(Count, Bin) ->
 parse_topic_metadata(Count, <<>>, Acc) when Count =< 0 ->
   {ok, lists:reverse(Acc)};
 parse_topic_metadata(Count, Bin, Acc) when Count =< 0 ->
-  error_logger:warning_msg("Finished parsing topic metadata, ignoring bytes: ~p", [Bin]),
+  error_logger:warning_msg(
+    "Finished parsing topic metadata, ignoring bytes: ~p", [Bin]),
   {ok, lists:reverse(Acc)};
 parse_topic_metadata(Count, <<0:?SHORT,
                               TopicSize:?USHORT,
@@ -582,7 +578,7 @@ parse_topic_metadata(Count, <<ErrorCode:?SHORT,
   {ok, PartitionsMetadata, Remainder} = parse_partition_metadata(0, Remainder),
   TopicMetadata = {ErrorCode, <<"unkown">>, PartitionsMetadata},
   parse_topic_metadata(Count - 1, Remainder, [TopicMetadata | Acc]).
-  
+
 parse_partition_metadata(Count, Bin) ->
   parse_partition_metadata(Count, Bin, []).
 

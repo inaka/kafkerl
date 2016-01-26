@@ -121,10 +121,10 @@ request_metadata(ServerRef, TopicsOrForced) ->
 request_metadata(ServerRef, Topics, Forced) ->
   gen_server:call(ServerRef, {request_metadata, Topics, Forced}).
 
--spec produce_succeeded(kafkerl:server_ref(), [{kafkerl:topic(),
-                                                kafkerl:partition(),
-                                                [binary()],
-                                                integer()}]) -> ok.
+-spec produce_succeeded(kafkerl:server_ref(), {kafkerl:topic(),
+                                               kafkerl:partition(),
+                                               [binary()],
+                                               integer()}) -> ok.
 produce_succeeded(ServerRef, Messages) ->
   gen_server:cast(ServerRef, {produce_succeeded, Messages}).
 
@@ -139,7 +139,9 @@ handle_call({dump_buffer_to_disk, Buffer, Options}, _From, State) ->
   FilePath = proplists:get_value(dump_location, Options, "") ++ DumpNameStr,
   case file:write_file(FilePath, term_to_binary(AllMessages)) of
     ok    -> ok;
-    Error -> error_logger:error_msgcritical("Unable to save messages, reason: ~p", [Error])
+    Error ->
+      error_logger:error_msg(
+        "[CRITICAL] Unable to save messages, reason: ~p", [Error])
   end,
   {reply, ok, State#state{last_dump_name = DumpName}};
 handle_call({send, Message}, _From, State) ->
@@ -194,11 +196,12 @@ handle_info({'DOWN', Ref, process, _, normal}, State) ->
   true = demonitor(Ref),
   {noreply, State};
 handle_info({'DOWN', Ref, process, _, Reason}, State) ->
-  _ = error_logger:error_msg("metadata request failed, reason: ~p", [Reason]),
+  error_logger:error_msg("metadata request failed, reason: ~p", [Reason]),
   true = demonitor(Ref),
   {noreply, handle_request_metadata(State, [], true)};
 handle_info(Msg, State) ->
-  _ = error_logger:info_msg("Unexpected info message received: ~p on ~p", [Msg, State]),
+  error_logger:info_msg(
+    "Unexpected info message received: ~p on ~p", [Msg, State]),
   {noreply, State}.
 
 -spec handle_cast(any(), state()) -> {noreply, state()}.
@@ -243,25 +246,24 @@ init([Config]) ->
       {ok, State};
     {errors, Errors} ->
       lists:foreach(fun(E) ->
-                      _ = error_logger:error_msgcritical("Connector config error ~p", [E])
+                      error_logger:error_msg(
+                        "[CRITICAL] Connector config error ~p", [E])
                     end, Errors),
       {stop, bad_config}
   end.
 
 handle_send(Message, State = #state{autocreate_topics = false}) ->
-  error_logger:error_msgcritical("a.1 ~p", [Message]),
   % The topic didn't exist, ignore
   {Topic, _Partition, Payload} = Message,
-  _ = error_logger:error_msg("Dropped ~p sent to non existing topic ~p", [Payload, Topic]),
+  error_logger:error_msg(
+    "Dropped ~p sent to non existing topic ~p", [Payload, Topic]),
   {reply, {error, non_existing_topic}, State};
 handle_send(Message, State = #state{broker_mapping = void,
                                     pending = Pending}) ->
-  error_logger:error_msgcritical("b.1 ~p", [Message]),
   % We should consider saving this to a new buffer instead of using the state.
   {reply, ok, State#state{pending = [Message | Pending]}};
 handle_send(Message, State = #state{broker_mapping = Mapping, pending = Pending,
                                     known_topics = KnownTopics}) ->
-  error_logger:error_msgcritical("c.1 ~p", [Message]),
   {Topic, Partition, Payload} = Message,
   case lists:any(fun({K, _}) -> K =:= {Topic, Partition} end, Mapping) of
     true ->
@@ -278,15 +280,15 @@ handle_send(Message, State = #state{broker_mapping = Mapping, pending = Pending,
       % can't add partitions on the fly.
       case lists:any(fun({{T, _}, _}) -> T =:= Topic end, Mapping) of
         true ->
-          _ = error_logger:error_msg("Dropped ~p sent to topic ~p, partition ~p",
+          error_logger:error_msg("Dropped ~p sent to topic ~p, partition ~p",
                           [Payload, Topic, Partition]),
           {reply, {error, bad_partition}, State};
         false ->
           NewKnownTopics = lists:umerge([Topic], KnownTopics),
           NewState = State#state{pending = [Message | Pending]},
-          error_logger:error_msgcritical("X"),
+          error_logger:error_msg("[CRITICAL] X"),
           R={reply, ok, handle_request_metadata(NewState, NewKnownTopics)},
-          error_logger:error_msgcritical("X2"),
+          error_logger:error_msg("[CRITICAL] X2"),
           R
       end
   end.
@@ -456,11 +458,11 @@ expand_topic({?NO_ERROR, Topic, Partitions}) ->
   {true, {Topic, Partitions}};
 expand_topic({Error = ?REPLICA_NOT_AVAILABLE, Topic, Partitions}) ->
   % Replica not available can be ignored, still, show a warning
-  _ = error_logger:warning_msg("Ignoring ~p on metadata for topic ~p",
+  error_logger:warning_msg("Ignoring ~p on metadata for topic ~p",
                     [kafkerl_error:get_error_name(Error), Topic]),
   {true, {Topic, Partitions}};
 expand_topic({Error, Topic, _Partitions}) ->
-  _ = error_logger:error_msg("Error ~p on metadata for topic ~p",
+  error_logger:error_msg("Error ~p on metadata for topic ~p",
                   [kafkerl_error:get_error_name(Error), Topic]),
   {true, {Topic, []}}.
 
@@ -474,12 +476,12 @@ expand_partitions({Topic, [{?NO_ERROR, Partition, Leader, _, _} | T]}, Acc) ->
   expand_partitions({Topic, T}, [ExpandedPartition | Acc]);
 expand_partitions({Topic, [{Error = ?REPLICA_NOT_AVAILABLE, Partition, Leader,
                             _, _} | T]}, Acc) ->
-  _ = error_logger:warning_msg("Ignoring ~p on metadata for topic ~p, partition ~p",
+  error_logger:warning_msg("Ignoring ~p on metadata for topic ~p, partition ~p",
                     [kafkerl_error:get_error_name(Error), Topic, Partition]),
   ExpandedPartition = {{Topic, Partition}, Leader},
   expand_partitions({Topic, T}, [ExpandedPartition | Acc]);
 expand_partitions({Topic, [{Error, Partition, _, _, _} | T]}, Acc) ->
-  _ = error_logger:error_msg("Error ~p on metadata for topic ~p, partition ~p",
+  error_logger:error_msg("Error ~p on metadata for topic ~p, partition ~p",
                   [kafkerl_error:get_error_name(Error), Topic, Partition]),
   expand_partitions({Topic, T}, Acc).
 
@@ -551,5 +553,5 @@ get_timestamp() ->
 %% Error handling
 %%==============================================================================
 warn_metadata_request(Host, Port, Reason) ->
-  _ = error_logger:warning_msg("Unable to retrieve metadata from ~s:~p, reason: ~p",
+  error_logger:warning_msg("Unable to retrieve metadata from ~s:~p, reason: ~p",
                     [Host, Port, Reason]).

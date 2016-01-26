@@ -12,11 +12,11 @@
 -type offset()     :: integer().
 
 -type callback()   :: pid() |
-                      fun() | 
+                      fun() |
                       {atom(), atom()} |
                       {atom(), atom(), [any()]}.
--type option()     :: {buffer_size, integer() | infinity} | 
-                      {dump_location, string()} | 
+-type option()     :: {buffer_size, integer() | infinity} |
+                      {dump_location, string()} |
                       {consumer, callback()} |
                       {min_bytes, integer()} |
                       {max_wait, integer()} |
@@ -39,7 +39,7 @@
 %% API
 %%==============================================================================
 start() ->
-  application:load(?MODULE),
+  _ = application:load(?MODULE),
   application:start(?MODULE).
 
 start(_StartType, _StartArgs) ->
@@ -56,9 +56,9 @@ produce(Topic, Partition, Message) ->
 -spec produce(server_ref(), topic(), partition(), payload()) -> ok;
              (topic(), partition(), payload(), options()) -> ok.
 produce(Topic, Partition, Message, Options) when is_list(Options) ->
-  produce(?MODULE, {Topic, Partition, Message}, Options);
+  kafkerl_connector:send(?MODULE, {Topic, Partition, Message}, Options);
 produce(ServerRef, Topic, Partition, Message) ->
-  produce(ServerRef, {Topic, Partition, Message}, []).
+  kafkerl_connector:send(ServerRef, {Topic, Partition, Message}, []).
 
 -spec produce(server_ref(), topic(), partition(), payload(), options()) -> ok.
 produce(ServerRef, Topic, Partition, Message, Options) ->
@@ -83,7 +83,7 @@ consume(ServerRef, Topic, Partition, Options) ->
         proplists:get_value(fetch_interval, Options, false)} of
     {undefined, false} ->
       NewOptions = [{consumer, self()} | Options],
-      kafkerl_connector:fetch(ServerRef, Topic, Partition, NewOptions),
+      _ = kafkerl_connector:fetch(ServerRef, Topic, Partition, NewOptions),
       kafkerl_utils:gather_consume_responses();
     {undefined, _} ->
       {error, fetch_interval_specified_with_no_consumer};

@@ -1,5 +1,6 @@
 {application, kafkerl,
  [{description, []},
+  {modules, []},
   {vsn, "1"},
   {registered, []},
   {applications, [kernel, stdlib]},
