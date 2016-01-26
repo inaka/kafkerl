@@ -25,7 +25,7 @@ start_link() ->
 init([]) ->
   ChildSpecs = case application:get_env(kafkerl, disabled, false) of
                  true ->
-                   lager:notice("Kafkerl is disabled, ignoring"),
+                   error_logger:info_msg("Kafkerl is disabled, ignoring"),
                    [];
                  false ->
                    [get_connector_child_spec()]

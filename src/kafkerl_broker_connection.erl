@@ -102,7 +102,7 @@ handle_info(connection_timeout, State) ->
   {stop, {error, unable_to_connect}, State};
 handle_info({tcp_closed, _Socket}, State = #state{name = Name,
                                                   address = {Host, Port}}) ->
-  _ = lager:warning("~p lost connection to ~p:~p", [Name, Host, Port]),
+  _ = error_logger:warning_msg("~p lost connection to ~p:~p", [Name, Host, Port]),
   NewState = handle_tcp_close(State),
   {noreply, NewState};
 handle_info({tcp, _Socket, Bin}, State) ->
@@ -114,7 +114,7 @@ handle_info({flush, Time}, State) ->
   {ok, _Tref} = queue_flush(Time),
   handle_flush(State);
 handle_info(Msg, State = #state{name = Name}) ->
-  _ = lager:notice("~p got unexpected info message: ~p on ~p", [Name, Msg]),
+  _ = error_logger:info_msg("~p got unexpected info message: ~p on ~p", [Name, Msg]),
   {noreply, State}.
 
 % Boilerplate
@@ -150,7 +150,7 @@ init([Id, Connector, Address, Config, Name]) ->
       {ok, State};
     {errors, Errors} ->
       ok = lists:foreach(fun(E) ->
-                           _ = lager:critical("configuration error: ~p", [E])
+                           _ = error_logger:error_msgcritical("configuration error: ~p", [E])
                          end, Errors),
       {stop, bad_config}
   end.
@@ -173,17 +173,15 @@ handle_flush(State = #state{socket = Socket, ets = EtsName, buffers = Buffers,
                                                        ClientId,
                                                        CorrelationId),
       true = ets:insert_new(EtsName, {CorrelationId, MergedMessages}),
-      _ = lager:debug("~p sending ~p", [Name, Request]),
       case gen_tcp:send(Socket, Request) of
         {error, Reason} ->
-          _ = lager:critical("~p was unable to write to socket, reason: ~p",
+          _ = error_logger:error_msgcritical("~p was unable to write to socket, reason: ~p",
                              [Name, Reason]),
           gen_tcp:close(Socket),
           ets:delete_all_objects(EtsName, CorrelationId),
           ok = resend_messages(MergedMessages, Connector),
           {noreply, handle_tcp_close(NewState)};
         ok ->
-          _ = lager:debug("~p sent message ~p", [Name, CorrelationId]),
           {noreply, NewState}
       end
   end.
@@ -198,7 +196,7 @@ handle_fetch(ServerRef, Topic, Partition, Options,
         Scheduled} of
     % An scheduled fetch we can't identify? We ignore it
     {_, false, true} ->
-      lager:warning("ignoring unknown scheduled fetch"),
+      error_logger:warning_msg("ignoring unknown scheduled fetch"),
       {reply, ok, State};
     % We are already fetching that topic/partition pair
     {#fetch{}, _, false} ->
@@ -221,12 +219,11 @@ handle_fetch(ServerRef, Topic, Partition, Options,
                                                      MinBytes),
       case gen_tcp:send(Socket, Payload) of
         {error, Reason} ->
-          _ = lager:critical("~p was unable to write to socket, reason: ~p",
+          _ = error_logger:error_msgcritical("~p was unable to write to socket, reason: ~p",
                              [Name, Reason]),
           ok = gen_tcp:close(Socket),
           {reply, {error, no_connection}, handle_tcp_close(State)};
         ok ->
-          _ = lager:debug("~p sent request ~p", [Name, CorrelationId]),
           NewFetch = #fetch{correlation_id = CorrelationId,
                             server_ref = ServerRef,
                             topic = Topic,
@@ -364,11 +361,11 @@ handle_produce_response(Bin, State = #state{connector = Connector, name = Name,
               {ok, State}
           end;
         _ ->
-          _ = lager:warning("~p was unable to get produce response", [Name]),
+          _ = error_logger:warning_msg("~p was unable to get produce response", [Name]),
           {error, invalid_produce_response}
       end;
     Other ->
-     _ = lager:critical("~p got unexpected response when parsing message: ~p",
+     _ = error_logger:error_msgcritical("~p got unexpected response when parsing message: ~p",
                         [Name, Other]),
      {ok, State}
   end.
@@ -438,20 +435,20 @@ handle_error({Topic, Partition, Error}, Messages, Name)
   end;
 handle_error({Topic, Partition, Error}, _Messages, Name) ->
   ErrorName = kafkerl_error:get_error_name(Error),
-  _ = lager:error("~p was unable to handle ~p error on topic ~p, partition ~p",
+  _ = error_logger:error_msg("~p was unable to handle ~p error on topic ~p, partition ~p",
                   [Name, ErrorName, Topic, Partition]),
   false.
 
 get_message_for_error(Topic, Partition, SavedMessages, Name) ->
   case lists:keyfind(Topic, 1, SavedMessages) of
     false ->
-      _ = lager:error("~p found no messages for topic ~p, partition ~p",
+      _ = error_logger:error_msg("~p found no messages for topic ~p, partition ~p",
                       [Name, Topic, Partition]),
       undefined;
     {Topic, Partitions} ->
       case lists:keyfind(Partition, 1, Partitions) of
         false -> 
-          _ = lager:error("~p found no messages for topic ~p, partition ~p",
+          _ = error_logger:error_msg("~p found no messages for topic ~p, partition ~p",
                           [Name, Topic, Partition]),
           undefined;
         {Partition, Messages} ->
@@ -460,18 +457,16 @@ get_message_for_error(Topic, Partition, SavedMessages, Name) ->
   end.
 
 connect(Pid, Name, _TCPOpts, {Host, Port} = _Address, _Timeout, 0) ->
-  _ = lager:error("~p was unable to connect to ~p:~p", [Name, Host, Port]),
+  _ = error_logger:error_msg("~p was unable to connect to ~p:~p", [Name, Host, Port]),
   Pid ! connection_timeout;
 connect(Pid, Name, TCPOpts, {Host, Port} = Address, Timeout, Retries) ->
-  _ = lager:debug("~p attempting connection to ~p:~p", [Name, Host, Port]),
   case gen_tcp:connect(Host, Port, TCPOpts, 5000) of
     {ok, Socket} ->
-      _ = lager:debug("~p connnected to ~p:~p", [Name, Host, Port]),
       gen_tcp:controlling_process(Socket, Pid),
       Pid ! {connected, Socket};
     {error, Reason} ->
       NewRetries = Retries - 1,
-      _ = lager:warning("~p unable to connect to ~p:~p. Reason: ~p
+      _ = error_logger:warning_msg("~p unable to connect to ~p:~p. Reason: ~p
                          (~p retries left)",
                         [Name, Host, Port, Reason, NewRetries]),
       timer:sleep(Timeout),
@@ -496,7 +491,7 @@ get_messages_from(Ets, Retries) ->
     _Error when Retries > 0 ->
       get_messages_from(Ets, Retries - 1);
     _Error ->
-      _ = lager:warning("giving up on reading from the ETS buffer"),
+      _ = error_logger:warning_msg("giving up on reading from the ETS buffer"),
       []
   end.
 

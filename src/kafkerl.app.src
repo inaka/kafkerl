@@ -4,5 +4,5 @@
   {registered, []},
   {applications, [kernel, stdlib]},
   {mod, {kafkerl, []}},
-  {env, []},
-  {lager, [{handlers, [{lager_console_backend, info}]}]}]}.
+  {env, []}
+  ]}.
