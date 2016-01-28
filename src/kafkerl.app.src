@@ -1,9 +1,13 @@
 {application, kafkerl,
  [{description, []},
   {modules, []},
-  {vsn, "1"},
+  {vsn, "1.0.0"},
   {registered, []},
   {applications, [kernel, stdlib]},
   {mod, {kafkerl, []}},
-  {env, []}
+  {env, []},
+  {maintainers,["Inaka"]},
+  {licenses,["Apache 2.0"]},
+  {links,[{"Github","https://github.com/inaka/kafkerl"}]},
+  {build_tools,["erlang.mk", "rebar"]}
   ]}.
