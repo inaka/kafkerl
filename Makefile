@@ -6,10 +6,10 @@ BUILD_DEPS = inaka_mk hexer_mk
 
 dep_epocxy   = hex 1.0.0
 dep_validerl = hex 1.0.0
-dep_mixer    = git https://github.com/inaka/mixer.git 0.1.4
+dep_mixer    = hex 0.1.5 inaka_mixer
 dep_katana   = hex 0.2.22
 dep_inaka_mk = git https://github.com/inaka/inaka.mk.git 1.0.0
-dep_hexer_mk = git https://github.com/inaka/hexer.mk.git 1.0.2
+dep_hexer_mk = git https://github.com/inaka/hexer.mk.git 1.1.0
 
 DEP_PLUGINS = inaka_mk hexer_mk
 
