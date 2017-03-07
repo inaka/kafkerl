@@ -1,18 +1,20 @@
 { application
 , kafkerl
 , [ {description, "Apache Kafka 0.8.2 high performance producer/consumer for erlang."}
-  , {vsn, "1.0.0"}
-  , {applications, [kernel, stdlib]}
+  , {vsn, "2.1.0"}
+  , {applications, [kernel, validerl, epocxy, lager, stdlib]}
+  , {mod, {kafkerl_app, []}}
   , {modules, [ kafkerl
+              , kafkerl_app
               , kafkerl_broker_connection
               , kafkerl_connector
               , kafkerl_error
               , kafkerl_protocol
               , kafkerl_sup
               , kafkerl_utils]}
-  , {maintainers, ["Inaka"]}
-  , {licenses, ["Apache 2.0"]}
-  , {links, [{"Github","https://github.com/inaka/kafkerl"}]}
+  , {maintainers, ["hernanrivasacosta@gmail.com", "Inaka"]}
+  , {licenses, ["Apache Licence 2.0"]}
+  , {links, [{"Github", "https://github.com/hernanrivasacosta/kafkerl"}]}
   , {build_tools, ["rebar3"]}
   , {lager, [{handlers, [{lager_console_backend, info}]}]}
   ]
